@@ -1,6 +1,3 @@
-// TODO: Move mq init stuff out of setup (see note in setup)
-// TODO: Send reset message after connecting to MQTT broker.
-
 // Raspberry Pi Pico W test sketch.
 // Sends time and temperature via MQTT over wifi once a minute.
 // J.Christensen 14Mar2025
@@ -25,15 +22,14 @@ const char* mqTopic {"timer_main"};
 
 // other constants
 constexpr int txPin {4}, rxPin {5};     // Serial pins
-constexpr int wifiLED {7};              // Illuminates to indicate wifi connected
+constexpr int hbLED {7};                // Heartbeat LED
 constexpr int mqttLED {8};              // Illuminates to indicate mqtt connected
-constexpr int hbLED {9};                // Heartbeat LED
+constexpr int relay {9};                // simulate a relay with an LED for now
 constexpr int btnPin {14};              // force prompt for wifi credentials
-constexpr int relay {LED_BUILTIN};      // simulate a relay with an LED for now
 constexpr uint32_t hbInterval {1000};   // Heartbeat LED blink interval
 
 // object instantiations and globals
-HardwareSerial& mySerial {Serial2};         // choose Serial, Serial1 or Serial2 here
+HardwareSerial& mySerial {Serial2};     // choose Serial, Serial1 or Serial2 here
 PicoWifiManager wifi(mySerial);
 WiFiClient picoClient;
 JC_MQTT mq(picoClient, mySerial);
@@ -44,7 +40,6 @@ void setup()
 {
     hb.begin();
     btn.begin();
-    pinMode(wifiLED, OUTPUT);
     pinMode(mqttLED, OUTPUT);
     pinMode(relay, OUTPUT);
     Serial2.setTX(txPin);
@@ -58,36 +53,40 @@ void setup()
     btn.read();
     if (btn.isPressed()) wifi.getCreds();
     
-    // initialize wifi & mqtt
+    // initialize wifi
     wifi.begin();
     while (!wifi.run()) delay(50);
 
-    //---------TODO: Can this be moved to the class, esp. initial subscribe and publish.
+    // initialize mqtt
     mq.begin(mqBroker, mqPort, mqTopic, wifi.getHostname());
-    while (!mq.run()) delay(50);
     mq.setCallback(mqttReceive);
-    mq.subscribe(wifi.getHostname());
-    mqttPublish((char*)"reset");
+    mq.setConnectCallback(mqttConnect);
 }
+
+uint msReset {0};                       // signal from mqttReceive to reset the MCU
 
 void loop()
 {
     bool wifiStatus = wifi.run();
-    digitalWrite(wifiLED, wifiStatus);
-    bool mqttStatus = mq.run();
-    digitalWrite(mqttLED, mqttStatus);
+    if (wifiStatus) {
+        bool mqttStatus = mq.run();
+        digitalWrite(mqttLED, mqttStatus);
 
-    // print ntp time to serial once a minute
-    static time_t printLast{0};
-    time_t ntpNow = time(nullptr);
-    if (printLast != ntpNow && second(ntpNow) == 0) {
-        printLast = ntpNow;
-        mySerial.printf("%d %.4d-%.2d-%.2d %.2d:%.2d:%.2d UTC\n",
-            millis(), year(ntpNow), month(ntpNow), day(ntpNow),
-            hour(ntpNow), minute(ntpNow), second(ntpNow));
-    }
-    
+        // print ntp time to serial once a minute
+        static time_t printLast{0};
+        time_t ntpNow = time(nullptr);
+        if (printLast != ntpNow && second(ntpNow) == 0) {
+            printLast = ntpNow;
+            mySerial.printf("%d %.4d-%.2d-%.2d %.2d:%.2d:%.2d UTC\n",
+                millis(), year(ntpNow), month(ntpNow), day(ntpNow),
+                hour(ntpNow), minute(ntpNow), second(ntpNow));
+        }
+    }    
     hb.run();
+    if (msReset > 0 && millis() > msReset) {
+        mySerial.printf("%d Remote reset!\n", millis());
+        rp2040.reboot();
+    }
 }
 
 void mqttPublish(char* msg)
@@ -101,8 +100,8 @@ void mqttPublish(char* msg)
     time_t now = time(nullptr);
     TimeChangeRule* tcr;
     time_t l = eastern.toLocal(now, &tcr);
-    struct tm tminfo;
-    gmtime_r(&l, &tminfo);
+    //struct tm tminfo;
+    //gmtime_r(&l, &tminfo);
 
     sprintf(pub, "%s %s %.2d:%.2d:%.2d",
         wifi.getHostname(), msg, hour(l), minute(l), second(l));
@@ -121,21 +120,47 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
     for (uint i=length-8; i<length; ++i) *pSer++ = static_cast<char>(payload[i]);
     *pSer++ = '\0';
 
-    if (payload[0] == 'T') {            // state True, turn on
-        digitalWrite(relay, true);
-        strcpy(msg, "ack ");
-        strcat(msg, serial);
-        mqttPublish(msg);
+    // process the incoming message, note we only use the first character
+    switch (payload[0]) {
+        case 'T':   //  state True, turn on
+        case 't':
+            digitalWrite(relay, true);
+            strcpy(msg, "ack ");
+            strcat(msg, serial);
+            mqttPublish(msg);
+            break;
+        case 'F':   // state False, turn off
+        case 'f':
+            digitalWrite(relay, false);
+            strcpy(msg, "ack ");
+            strcat(msg, serial);
+            mqttPublish(msg);
+            break;
+        case 'P':   // received Ping, send pong
+        case 'p':
+            strcpy(msg, "pong ");
+            strcat(msg, serial);
+            mqttPublish(msg);
+            break;
+        case 'R':   // received Reset/Reboot
+        case 'r':
+            digitalWrite(relay, false);
+            strcpy(msg, "ack ");
+            strcat(msg, serial);
+            mqttPublish(msg);
+            mySerial.printf("%d Remote reset requested: Reset in 5 seconds!\n", millis());
+            msReset = millis() + 5000;
+            break;
+        default:    // something we were not expecting
+            strcpy(msg, "nack ");
+            strcat(msg, serial);
+            mqttPublish(msg);
+            break;
     }
-    else if (payload[0] == 'F') {       // state False, turn off
-        digitalWrite(relay, false);
-        strcpy(msg, "ack ");
-        strcat(msg, serial);
-        mqttPublish(msg);
-    }
-    else if (payload[0] == 'P') {       // received Ping, send pong
-        strcpy(msg, "pong ");
-        strcat(msg, serial);
-        mqttPublish(msg);
-    }
+}
+
+// this function is called when mqtt (re)connects
+void mqttConnect()
+{
+    mqttPublish((char*)"connected");
 }

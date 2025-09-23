@@ -21,6 +21,7 @@ class JC_MQTT : public PubSubClient
         void setTopic(const char* topic) {m_pubTopic = topic;}
         void publish(const char* msg);
         bool run();
+        void setConnectCallback(void (*fcn)()) {m_connectCallback = fcn;}
 
     private:
         m_states_t m_state {CONNECT};
@@ -33,6 +34,7 @@ class JC_MQTT : public PubSubClient
         const char* m_msg;              // mqtt message text
         bool m_pubFlag;                 // ready to publish
         HardwareSerial& m_Serial;       // alternate serial output
+        void (*m_connectCallback)() {NULL}; // user function to call when MQTT connects
 };
 #endif
 
@@ -68,6 +70,7 @@ bool JC_MQTT::run()
                 m_retryCount = 0;
                 m_Serial << millis() << " Connected to MQTT broker\n";
                 subscribe(m_clientID);
+                if (m_connectCallback != NULL) m_connectCallback();
             }
             else {
                 m_state = WAIT_CONNECT;
