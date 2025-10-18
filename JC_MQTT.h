@@ -1,5 +1,5 @@
 // Arduino JC_MQTT Library
-// A library to send messages to an MQTT broker.
+// A library to send and receive messages via an MQTT broker.
 // Derived from the PubSubClient class.
 // https://github.com/JChristensen/
 // Copyright (C) 2025 by Jack Christensen and licensed under

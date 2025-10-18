@@ -1,6 +1,6 @@
-// Raspberry Pi Pico W test sketch.
-// Sends time and temperature via MQTT over wifi once a minute.
-// J.Christensen 14Mar2025
+// Remote wifi timer using Raspberry Pi Pico W or 2W.
+// Controls one or two relays based on messages received via MQTT.
+// J.Christensen 23Sep2025
 // Developed using Arduino IDE 1.8.19 and Earle Philhower's Ardino-Pico core,
 // https://github.com/earlephilhower/arduino-pico
 // Copyright (C) 2025 by Jack Christensen and licensed under
@@ -13,6 +13,7 @@
 #include <Streaming.h>          // https://github.com/janelia-arduino/Streaming
 #include <Timezone.h>           // https://github.com/JChristensen/Timezone
 #include "JC_MQTT.h"
+#include "Relay.h"
 #include "Heartbeat.h"
 
 // pin assignments
@@ -37,6 +38,7 @@ HardwareSerial& mySerial {Serial2};     // choose Serial, Serial1 or Serial2 her
 PicoWifiManager wifi(mySerial);
 WiFiClient picoClient;
 JC_MQTT mq(picoClient, mySerial);
+Relay relay(relayAC, relayAUX);
 Heartbeat hb(ledHB, 100, 900);
 Button btn(btnManual);
 
@@ -44,6 +46,7 @@ void setup()
 {
     hb.begin();
     btn.begin();
+    relay.begin();
     pinMode(ledManual, OUTPUT);
     pinMode(ledON, OUTPUT);
     pinMode(relayAC, OUTPUT);
@@ -74,10 +77,10 @@ uint msReset {0};                       // signal from mqttReceive to reset the 
 
 void loop()
 {
-    bool wifiStatus = wifi.run();
-    if (wifiStatus) {
+    if (wifi.run()) {
         if (mq.run()) {
             hb.run();
+            relay.run();
         }
         else {
             hb.set(true);
@@ -139,6 +142,7 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
         case 'T':   //  state True, turn on
         case 't':
             digitalWrite(ledON, true);
+            relay.set(true);
             strcpy(msg, "ack ");
             strcat(msg, serial);
             mqttPublish(msg);
@@ -146,6 +150,7 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
         case 'F':   // state False, turn off
         case 'f':
             digitalWrite(ledON, false);
+            relay.set(false);
             strcpy(msg, "ack ");
             strcat(msg, serial);
             mqttPublish(msg);
@@ -159,6 +164,7 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
         case 'R':   // received Reset/Reboot
         case 'r':
             digitalWrite(ledON, false);
+            relay.set(false);
             strcpy(msg, "ack ");
             strcat(msg, serial);
             mqttPublish(msg);
