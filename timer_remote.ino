@@ -15,11 +15,6 @@
 #include "JC_MQTT.h"
 #include "Heartbeat.h"
 
-// mqtt parameters
-const char* mqBroker {"z21"};
-constexpr uint32_t mqPort {1883};
-const char* mqTopic {"timer_main"};
-
 // pin assignments
 constexpr int txPin {4}, rxPin {5};     // serial pins
 constexpr int ledHB {7};                // heartbeat LED
@@ -69,7 +64,8 @@ void setup()
     while (!wifi.run()) delay(50);
 
     // initialize mqtt
-    mq.begin(mqBroker, mqPort, mqTopic, wifi.getHostname());
+    mq.begin(wifi.getMqBroker(), wifi.getMqPort(),
+        wifi.getMqTopic(), wifi.getHostname());
     mq.setCallback(mqttReceive);
     mq.setConnectCallback(mqttConnect);
 }
