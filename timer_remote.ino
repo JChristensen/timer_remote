@@ -23,7 +23,6 @@ const char* mqTopic {"timer_main"};
 // other constants
 constexpr int txPin {4}, rxPin {5};     // Serial pins
 constexpr int hbLED {7};                // Heartbeat LED
-constexpr int mqttLED {8};              // Illuminates to indicate mqtt connected
 constexpr int relay {9};                // simulate a relay with an LED for now
 constexpr int btnPin {14};              // force prompt for wifi credentials
 constexpr uint32_t hbInterval {1000};   // Heartbeat LED blink interval
@@ -40,7 +39,6 @@ void setup()
 {
     hb.begin();
     btn.begin();
-    pinMode(mqttLED, OUTPUT);
     pinMode(relay, OUTPUT);
     Serial2.setTX(txPin);
     Serial2.setRX(rxPin);
@@ -70,7 +68,7 @@ void loop()
     bool wifiStatus = wifi.run();
     if (wifiStatus) {
         bool mqttStatus = mq.run();
-        digitalWrite(mqttLED, mqttStatus);
+        if (mqttStatus) hb.run();
 
         // print ntp time to serial once a minute
         static time_t printLast{0};
@@ -82,13 +80,15 @@ void loop()
                 hour(ntpNow), minute(ntpNow), second(ntpNow));
         }
     }    
-    hb.run();
     if (msReset > 0 && millis() > msReset) {
         mySerial.printf("%d Remote reset!\n", millis());
         rp2040.reboot();
     }
 }
 
+// send a message (back to timer_main).
+// the format is: <hostname> <msg> <timestamp>, space separated.
+// where hostname is this remote's hostname and timestamp is hh:mm:ss
 void mqttPublish(char* msg)
 {
     constexpr int PUB_SIZE {80};
@@ -100,14 +100,15 @@ void mqttPublish(char* msg)
     time_t now = time(nullptr);
     TimeChangeRule* tcr;
     time_t l = eastern.toLocal(now, &tcr);
-    //struct tm tminfo;
-    //gmtime_r(&l, &tminfo);
 
     sprintf(pub, "%s %s %.2d:%.2d:%.2d",
         wifi.getHostname(), msg, hour(l), minute(l), second(l));
     mq.publish(pub);
 }
 
+// process a received message. the timer_main program sends simple messages with
+// two fields separated by a space: <command> <serial_number>
+// where serial_number is eight hex digits.
 void mqttReceive(char* topic, byte* payload, unsigned int length)
 {
     mySerial.printf("%d Received [%s] ", millis(), topic);
@@ -116,11 +117,11 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
 
     static char msg[16];    // static messsage to publish
     char serial[16];        // copy of the serial number from the incoming message
-    char* pSer = serial;    // copy the serial number
+    char* pSer = serial;    // save the serial number so we can echo it back
     for (uint i=length-8; i<length; ++i) *pSer++ = static_cast<char>(payload[i]);
     *pSer++ = '\0';
 
-    // process the incoming message, note we only use the first character
+    // process the incoming message, note we only use the first character of the command
     switch (payload[0]) {
         case 'T':   //  state True, turn on
         case 't':
@@ -159,7 +160,8 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
     }
 }
 
-// this function is called when mqtt (re)connects
+// this function is called when mqtt (re)connects.
+// send a message to timer_main to tell it we are here.
 void mqttConnect()
 {
     mqttPublish((char*)"connected");
