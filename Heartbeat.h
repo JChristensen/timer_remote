@@ -10,6 +10,7 @@ class Heartbeat
         void run();
         void setInterval(uint32_t onTime, uint32_t offTime)
             {m_onTime = onTime; m_offTime = offTime;}
+        void set(bool state);
     
     private:
         uint8_t m_pin;
@@ -45,4 +46,12 @@ void Heartbeat::run()
             }
             break;
     }
+}
+
+// force the LED on or off. will only persist until the
+// run() method changes it.
+void Heartbeat::set(bool state)
+{
+    m_state = state;
+    digitalWrite(m_pin, m_state);
 }

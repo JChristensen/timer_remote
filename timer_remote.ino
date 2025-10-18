@@ -20,26 +20,39 @@ const char* mqBroker {"z21"};
 constexpr uint32_t mqPort {1883};
 const char* mqTopic {"timer_main"};
 
-// other constants
-constexpr int txPin {4}, rxPin {5};     // Serial pins
-constexpr int hbLED {7};                // Heartbeat LED
-constexpr int relay {9};                // simulate a relay with an LED for now
-constexpr int btnPin {14};              // force prompt for wifi credentials
-constexpr uint32_t hbInterval {1000};   // Heartbeat LED blink interval
+// pin assignments
+constexpr int txPin {4}, rxPin {5};     // serial pins
+constexpr int ledHB {7};                // heartbeat LED
+constexpr int ledManual {8};            // manual mode indicator
+constexpr int ledON {9};                // relay ON indicator
+constexpr int btnManual {14};           // override/manual button
+constexpr int relayAC {18};             // relay that switches the AC power
+constexpr int relayAUX {19};            // auxiliary or low voltage relay
+
+// pin assignments for v1 board
+//constexpr int relayAC {8};              // relay that switches the AC power
+//constexpr int relayAUX {9};             // auxiliary or low voltage relay
+//constexpr int ledHB {18};               // heartbeat LED
+//constexpr int ledManual {19};           // manual mode indicator
+//constexpr int ledON {20};               // relay ON indicator
+//constexpr int btnManual {21};           // override/manual button
 
 // object instantiations and globals
 HardwareSerial& mySerial {Serial2};     // choose Serial, Serial1 or Serial2 here
 PicoWifiManager wifi(mySerial);
 WiFiClient picoClient;
 JC_MQTT mq(picoClient, mySerial);
-Heartbeat hb(hbLED, hbInterval);
-Button btn(btnPin);
+Heartbeat hb(ledHB, 100, 900);
+Button btn(btnManual);
 
 void setup()
 {
     hb.begin();
     btn.begin();
-    pinMode(relay, OUTPUT);
+    pinMode(ledManual, OUTPUT);
+    pinMode(ledON, OUTPUT);
+    pinMode(relayAC, OUTPUT);
+    pinMode(relayAUX, OUTPUT);
     Serial2.setTX(txPin);
     Serial2.setRX(rxPin);
     mySerial.begin(115200); delay(500);
@@ -67,8 +80,12 @@ void loop()
 {
     bool wifiStatus = wifi.run();
     if (wifiStatus) {
-        bool mqttStatus = mq.run();
-        if (mqttStatus) hb.run();
+        if (mq.run()) {
+            hb.run();
+        }
+        else {
+            hb.set(true);
+        }
 
         // print ntp time to serial once a minute
         static time_t printLast{0};
@@ -125,14 +142,14 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
     switch (payload[0]) {
         case 'T':   //  state True, turn on
         case 't':
-            digitalWrite(relay, true);
+            digitalWrite(ledON, true);
             strcpy(msg, "ack ");
             strcat(msg, serial);
             mqttPublish(msg);
             break;
         case 'F':   // state False, turn off
         case 'f':
-            digitalWrite(relay, false);
+            digitalWrite(ledON, false);
             strcpy(msg, "ack ");
             strcat(msg, serial);
             mqttPublish(msg);
@@ -145,7 +162,7 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
             break;
         case 'R':   // received Reset/Reboot
         case 'r':
-            digitalWrite(relay, false);
+            digitalWrite(ledON, false);
             strcpy(msg, "ack ");
             strcat(msg, serial);
             mqttPublish(msg);
