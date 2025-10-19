@@ -5,7 +5,6 @@
 // https://github.com/earlephilhower/arduino-pico
 // Copyright (C) 2025 by Jack Christensen and licensed under
 // GNU GPL v3.0, https://www.gnu.org/licenses/gpl.html
-//
 
 #include <JC_Button.h>          // https://github.com/JChristensen/JC_Button
 #include <PicoWifiManager.h>    // https://github.com/JChristensen/PicoWifiManager
@@ -14,7 +13,6 @@
 #include <Timezone.h>           // https://github.com/JChristensen/Timezone
 #include "JC_MQTT.h"
 #include "Relay.h"
-#include "Heartbeat.h"
 
 // pin assignments
 constexpr int txPin {4}, rxPin {5};     // serial pins
@@ -41,6 +39,11 @@ JC_MQTT mq(picoClient, mySerial);
 Relay relay(relayAC, relayAUX);
 Heartbeat hb(ledHB, 100, 900);
 Button btn(btnManual);
+
+constexpr TimeChangeRule edt {"EDT", Second, Sun, Mar, 2, -240};  // Daylight time = UTC - 4 hours
+constexpr TimeChangeRule est {"EST", First, Sun, Nov, 2, -300};   // Standard time = UTC - 5 hours
+Timezone eastern(edt, est);
+TimeChangeRule* tcr;
 
 void setup()
 {
@@ -73,27 +76,54 @@ void setup()
     mq.setConnectCallback(mqttConnect);
 }
 
-uint msReset {0};                       // signal from mqttReceive to reset the MCU
+uint msReset {0};   // signal from mqttReceive to reset the MCU
+bool manualMode {false};
 
 void loop()
 {
+    static char msg[32] {};
     if (wifi.run()) {
         if (mq.run()) {
-            hb.run();
+            btn.read();
             relay.run();
+            hb.run();
+
+            if (btn.wasReleased()) {
+                if (relay.toggle()) {
+                    strcpy(msg, "manual_on");
+                }
+                else {
+                    strcpy(msg, "manual_off");
+                }
+                mqttPublish(msg);
+            }
+            else if (btn.pressedFor(1000)) {
+                digitalWrite(ledManual, manualMode = !manualMode);
+                // wait for the button to be released
+                while (btn.isPressed()) btn.read();
+                // tell the control program
+                if (manualMode) {
+                    strcpy(msg, "manual_mode");
+                }
+                else {
+                    strcpy(msg, "automatic_mode");
+                }
+                mqttPublish(msg);
+            }
         }
         else {
             hb.set(true);
         }
 
-        // print ntp time to serial once a minute
+        // print time to serial once a minute
         static time_t printLast{0};
-        time_t ntpNow = time(nullptr);
-        if (printLast != ntpNow && second(ntpNow) == 0) {
-            printLast = ntpNow;
-            mySerial.printf("%d %.4d-%.2d-%.2d %.2d:%.2d:%.2d UTC\n",
-                millis(), year(ntpNow), month(ntpNow), day(ntpNow),
-                hour(ntpNow), minute(ntpNow), second(ntpNow));
+        time_t utc = time(nullptr);
+        if (printLast != utc && second(utc) == 0) {
+            printLast = utc;
+            time_t local = eastern.toLocal(utc, &tcr);
+            mySerial.printf("%d %.4d-%.2d-%.2d %.2d:%.2d:%.2d %s\n",
+                millis(), year(local), month(local), day(local),
+                hour(local), minute(local), second(local), tcr->abbrev);
         }
     }    
     if (msReset > 0 && millis() > msReset) {
@@ -109,16 +139,12 @@ void mqttPublish(char* msg)
 {
     constexpr int PUB_SIZE {80};
     static char pub[PUB_SIZE];
-    constexpr TimeChangeRule edt {"EDT", Second, Sun, Mar, 2, -240};  // Daylight time = UTC - 4 hours
-    constexpr TimeChangeRule est {"EST", First, Sun, Nov, 2, -300};   // Standard time = UTC - 5 hours
-    static Timezone eastern(edt, est);
 
-    time_t now = time(nullptr);
-    TimeChangeRule* tcr;
-    time_t l = eastern.toLocal(now, &tcr);
+    time_t utc = time(nullptr);
+    time_t local = eastern.toLocal(utc, &tcr);
 
     sprintf(pub, "%s %s %.2d:%.2d:%.2d",
-        wifi.getHostname(), msg, hour(l), minute(l), second(l));
+        wifi.getHostname(), msg, hour(local), minute(local), second(local));
     mq.publish(pub);
 }
 
@@ -141,19 +167,33 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
     switch (payload[0]) {
         case 'T':   //  state True, turn on
         case 't':
-            digitalWrite(ledON, true);
-            relay.set(true);
-            strcpy(msg, "ack ");
-            strcat(msg, serial);
-            mqttPublish(msg);
+            if (manualMode) {
+                strcpy(msg, "manual_mode ");
+                strcat(msg, serial);
+                mqttPublish(msg);
+            }
+            else {
+                digitalWrite(ledON, true);
+                relay.set(true);
+                strcpy(msg, "ack ");
+                strcat(msg, serial);
+                mqttPublish(msg);
+            }
             break;
         case 'F':   // state False, turn off
         case 'f':
-            digitalWrite(ledON, false);
-            relay.set(false);
-            strcpy(msg, "ack ");
-            strcat(msg, serial);
-            mqttPublish(msg);
+            if (manualMode) {
+                strcpy(msg, "manual_mode ");
+                strcat(msg, serial);
+                mqttPublish(msg);
+            }
+            else {
+                digitalWrite(ledON, false);
+                relay.set(false);
+                strcpy(msg, "ack ");
+                strcat(msg, serial);
+                mqttPublish(msg);
+            }
             break;
         case 'P':   // received Ping, send pong
         case 'p':
@@ -172,7 +212,7 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
             msReset = millis() + 5000;
             break;
         default:    // something we were not expecting
-            strcpy(msg, "nack ");
+            strcpy(msg, "nak ");
             strcat(msg, serial);
             mqttPublish(msg);
             break;

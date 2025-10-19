@@ -5,8 +5,8 @@
 // Copyright (C) 2025 by Jack Christensen and licensed under
 // GNU GPL v3.0, https://www.gnu.org/licenses/gpl.html
 
-#ifndef JC_MQTT_H_INCLUDED
-#define JC_MQTT_H_INCLUDED
+#pragma once
+
 #include <Arduino.h>
 #include <PubSubClient.h>
 #include <Streaming.h>          // http://arduiniana.org/libraries/streaming/
@@ -17,7 +17,7 @@ class JC_MQTT : public PubSubClient
     public:
         JC_MQTT(Client& client, HardwareSerial& hws=Serial)
             : PubSubClient{client}, m_connectRetry{10}, m_Serial{hws} {}
-        void begin(const char* server, const uint32_t port, const char* topic, const char* clientID);
+        void begin(const char* broker, const uint32_t port, const char* topic, const char* clientID);
         void setTopic(const char* topic) {m_pubTopic = topic;}
         void publish(const char* msg);
         bool run();
@@ -36,22 +36,12 @@ class JC_MQTT : public PubSubClient
         HardwareSerial& m_Serial;       // alternate serial output
         void (*m_connectCallback)() {NULL}; // user function to call when MQTT connects
 };
-#endif
 
-// Arduino JC_MQTT Library
-// A library to send messages to an MQTT broker.
-// Derived from the PubSubClient class.
-// https://github.com/JChristensen/???
-// Copyright (C) 2025 by Jack Christensen and licensed under
-// GNU GPL v3.0, https://www.gnu.org/licenses/gpl.html
-
-//#include <JC_MQTT.h>
-
-void JC_MQTT::begin(const char* mqttBroker, uint32_t port, const char* topic, const char* clientID)
+void JC_MQTT::begin(const char* broker, uint32_t port, const char* topic, const char* clientID)
 {
     m_pubTopic = topic;
     m_clientID = clientID;
-    setServer(mqttBroker, 1883);
+    setServer(broker, port);
 }
 
 void JC_MQTT::publish(const char* msg)

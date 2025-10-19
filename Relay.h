@@ -22,10 +22,12 @@ class Relay
         void begin();
         void run();
         void set(bool state);
+        bool toggle();
     
     private:
         m_states_t m_state {WAIT};
         m_commands_t m_cmd {NONE};
+        bool m_relayState {false};
         int m_relayAC;          // pin for the AC (primary) relay
         int m_relayAUX;         // pin for the auxiliary relay
         uint m_dwell;           // the time in milliseconds between changing the relays
@@ -49,11 +51,13 @@ void Relay::run()
             if (m_cmd == TURN_ON){
                 digitalWrite(m_relayAUX, true);
                 m_ms = millis();
+                m_relayState = true;
                 m_state = DWELL_ON;
             }
             else if (m_cmd == TURN_OFF) {
                 digitalWrite(m_relayAC, false);
                 m_ms = millis();
+                m_relayState = false;
                 m_state = DWELL_OFF;
             }
             break;
@@ -80,4 +84,70 @@ void Relay::run()
 void Relay::set(bool state)
 {
     m_cmd = state ? TURN_ON : TURN_OFF;
+}
+
+// call toggle() to set the relays to the opposite of the current state.
+// the current state (after toggle) is returned.
+bool Relay::toggle()
+{
+    m_cmd = m_relayState ? TURN_OFF : TURN_ON;
+    return !m_relayState;
+}
+
+// Heartbeat LED class
+class Heartbeat
+{
+    public:
+        Heartbeat(uint8_t pin, uint32_t interval)
+            : m_pin(pin), m_onTime(interval), m_offTime(interval), m_state(true) {}
+        Heartbeat(uint8_t pin, uint32_t onTime, uint32_t offTime)
+            : m_pin(pin), m_onTime(onTime), m_offTime(offTime), m_state(true) {}
+        void begin();
+        void run();
+        void setInterval(uint32_t onTime, uint32_t offTime)
+            {m_onTime = onTime; m_offTime = offTime;}
+        void set(bool state);
+    
+    private:
+        uint8_t m_pin;
+        uint32_t m_onTime;
+        uint32_t m_offTime;
+        uint32_t m_lastHB;
+        bool m_state;
+};
+
+void Heartbeat::begin()
+{
+    pinMode(m_pin, OUTPUT);
+    digitalWrite(m_pin, m_state);
+    m_lastHB = millis();
+}
+
+void Heartbeat::run()
+{
+    switch (m_state) {
+        case true:
+            if ( millis() - m_lastHB >= m_onTime ) {
+                m_state = false;
+                m_lastHB = millis();
+                digitalWrite(m_pin, m_state);
+            }
+            break;
+
+        case false:
+            if ( millis() - m_lastHB >= m_offTime ) {
+                m_state = true;
+                m_lastHB = millis();
+                digitalWrite(m_pin, m_state);
+            }
+            break;
+    }
+}
+
+// force the LED on or off. will only persist until the
+// run() method changes it.
+void Heartbeat::set(bool state)
+{
+    m_state = state;
+    digitalWrite(m_pin, m_state);
 }
