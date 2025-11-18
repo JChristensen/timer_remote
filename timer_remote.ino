@@ -156,7 +156,7 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
     for (uint i=0; i<length; ++i) mySerial.printf("%c", static_cast<char>(payload[i]));
     mySerial.printf("\n");
 
-    static char msg[16];    // static messsage to publish
+    static char msg[40];    // static messsage to publish
     char serial[16];        // copy of the serial number from the incoming message
     char* pSer = serial;    // save the serial number so we can echo it back
     for (uint i=length-8; i<length; ++i) *pSer++ = static_cast<char>(payload[i]);
@@ -167,7 +167,7 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
         case 'T':   //  state True, turn on
         case 't':
             if (manualMode) {
-                strcpy(msg, "manual_mode ");
+                strcpy(msg, "ack_manual ");
                 strcat(msg, serial);
                 mqttPublish(msg);
             }
@@ -182,7 +182,7 @@ void mqttReceive(char* topic, byte* payload, unsigned int length)
         case 'F':   // state False, turn off
         case 'f':
             if (manualMode) {
-                strcpy(msg, "manual_mode ");
+                strcpy(msg, "ack_manual ");
                 strcat(msg, serial);
                 mqttPublish(msg);
             }
