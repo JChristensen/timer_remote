@@ -14,22 +14,14 @@
 #include "JC_MQTT.h"
 #include "Relay.h"
 
-// pin assignments
-constexpr int txPin {4}, rxPin {5};     // serial pins
-constexpr int ledHB {7};                // heartbeat LED
-constexpr int ledManual {8};            // manual mode indicator
-constexpr int ledON {9};                // relay ON indicator
-constexpr int btnManual {14};           // override/manual button
-constexpr int relayAC {18};             // relay that switches the AC power
-constexpr int relayAUX {19};            // auxiliary or low voltage relay
-
 // pin assignments for v1 board
-//constexpr int relayAC {8};              // relay that switches the AC power
-//constexpr int relayAUX {9};             // auxiliary or low voltage relay
-//constexpr int ledHB {18};               // heartbeat LED
-//constexpr int ledManual {19};           // manual mode indicator
-//constexpr int ledON {20};               // relay ON indicator
-//constexpr int btnManual {21};           // override/manual button
+constexpr int txPin {4}, rxPin {5};     // serial pins
+constexpr int relayAC {8};              // relay that switches the AC power
+constexpr int relayAUX {9};             // auxiliary or low voltage relay
+constexpr int ledHB {18};               // heartbeat LED
+constexpr int ledManual {19};           // manual mode indicator
+constexpr int ledON {20};               // relay ON indicator
+constexpr int btnManual {21};           // override/manual button
 
 // object instantiations and globals
 HardwareSerial& mySerial {Serial2};     // choose Serial, Serial1 or Serial2 here
@@ -52,6 +44,11 @@ void setup()
     relay.begin();
     pinMode(ledManual, OUTPUT);
     pinMode(ledON, OUTPUT);
+    digitalWrite(ledManual, HIGH);  // lamp test
+    digitalWrite(ledON, HIGH);
+    delay(2000);
+    digitalWrite(ledManual, LOW);
+    digitalWrite(ledON, LOW);
     pinMode(relayAC, OUTPUT);
     pinMode(relayAUX, OUTPUT);
     Serial2.setTX(txPin);
@@ -90,9 +87,11 @@ void loop()
 
             if (btn.wasReleased()) {
                 if (relay.toggle()) {
+                    digitalWrite(ledON, HIGH);
                     strcpy(msg, "manual_on");
                 }
                 else {
+                    digitalWrite(ledON, LOW);
                     strcpy(msg, "manual_off");
                 }
                 mqttPublish(msg);
@@ -133,7 +132,7 @@ void loop()
 }
 
 // send a message (back to timer_main).
-// the format is: <hostname> <msg> <timestamp>, space separated.
+// the format is: <hostname> <msg> <timestamp> <rssi>, space separated.
 // where hostname is this remote's hostname and timestamp is hh:mm:ss
 void mqttPublish(char* msg)
 {
@@ -143,8 +142,8 @@ void mqttPublish(char* msg)
     time_t utc = time(nullptr);
     time_t local = eastern.toLocal(utc, &tcr);
 
-    sprintf(pub, "%s %s %.2d:%.2d:%.2d",
-        wifi.getHostname(), msg, hour(local), minute(local), second(local));
+    sprintf(pub, "%s %s %.2d:%.2d:%.2d %ld",
+        wifi.getHostname(), msg, hour(local), minute(local), second(local), WiFi.RSSI());
     mq.publish(pub);
 }
 

@@ -18,7 +18,7 @@ class Relay
     enum m_commands_t {NONE, TURN_ON, TURN_OFF};
     public:
         Relay(int relayAC, int relayAUX, uint dwellTime=1000)
-            : m_relayAC(relayAC), m_relayAUX(relayAUX), m_dwell(dwellTime) {}
+            : m_relayAC{relayAC}, m_relayAUX{relayAUX}, m_dwell{dwellTime} {}
         void begin();
         void run();
         void set(bool state);
