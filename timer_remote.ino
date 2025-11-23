@@ -28,7 +28,7 @@ HardwareSerial& mySerial {Serial2};     // choose Serial, Serial1 or Serial2 her
 PicoWifiManager wifi(mySerial);
 WiFiClient picoClient;
 JC_MQTT mq(picoClient, mySerial);
-Relay relay(relayAC, relayAUX);
+Relay relay(relayAC, relayAUX, 0);
 Heartbeat hb(ledHB, 100, 900);
 Button btn(btnManual);
 
@@ -61,6 +61,7 @@ void setup()
     // check to see if the user wants to enter new wifi credentials, else initialize wifi.
     btn.read();
     if (btn.isPressed()) wifi.getCreds();
+    btn.read();
     
     // initialize wifi
     wifi.begin();
