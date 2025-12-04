@@ -1,7 +1,7 @@
 // Remote wifi timer using Raspberry Pi Pico W or 2W.
 // Controls one or two relays based on messages received via MQTT.
 // J.Christensen 23Sep2025
-// Developed using Arduino IDE 1.8.19 and Earle Philhower's Ardino-Pico core,
+// Developed using Arduino IDE 1.8.19 and Earle Philhower's Arduino-Pico core,
 // https://github.com/earlephilhower/arduino-pico
 // Copyright (C) 2025 by Jack Christensen and licensed under
 // GNU GPL v3.0, https://www.gnu.org/licenses/gpl.html
@@ -62,7 +62,7 @@ void setup()
     btn.read();
     if (btn.isPressed()) wifi.getCreds();
     btn.read();
-    
+
     // initialize wifi
     wifi.begin();
     while (!wifi.run()) delay(50);
@@ -125,7 +125,7 @@ void loop()
                 millis(), year(local), month(local), day(local),
                 hour(local), minute(local), second(local), tcr->abbrev);
         }
-    }    
+    }
     if (msReset > 0 && millis() > msReset) {
         mySerial.printf("%d Remote reset!\n", millis());
         rp2040.reboot();
