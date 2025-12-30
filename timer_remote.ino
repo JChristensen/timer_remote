@@ -61,7 +61,7 @@ void setup()
     // check to see if the user wants to enter new wifi credentials, else initialize wifi.
     btn.read();
     if (btn.isPressed()) wifi.getCreds();
-    btn.read();
+    while (btn.isPressed()) btn.read();
 
     // initialize wifi
     wifi.begin();
