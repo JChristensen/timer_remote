@@ -29,7 +29,7 @@ PicoWifiManager wifi(mySerial);
 WiFiClient picoClient;
 JC_MQTT mq(picoClient, mySerial);
 Relay relay(relayAC, relayAUX, 0);
-Heartbeat hb(ledHB, 100, 900);
+Heartbeat hb(ledHB, 50, 1950);
 Button btn(btnManual);
 
 constexpr TimeChangeRule edt {"EDT", Second, Sun, Mar, 2, -240};  // Daylight time = UTC - 4 hours
@@ -111,7 +111,7 @@ void loop()
                 mqttPublish(msg);
             }
         }
-        else {
+        else {  // mqtt not connected
             hb.set(true);
         }
 
